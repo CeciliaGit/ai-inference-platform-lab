@@ -1,0 +1,91 @@
+services:
+
+  # ---------------------------------------------------------------------------
+  # Application services
+  # ---------------------------------------------------------------------------
+
+  router_api:
+    build: ./services/router_api
+    ports:
+      - "8000:8000"
+    environment:
+      - RETRIEVAL_SERVICE_URL=http://retrieval_service:8000
+      - INFERENCE_WORKER_URL=http://inference_worker:8000
+      - HTTP_TIMEOUT_S=2.0
+      - MAX_CONCURRENCY=64
+    depends_on:
+      - retrieval_service
+      - inference_worker
+    restart: unless-stopped
+
+  retrieval_service:
+    build: ./services/retrieval_service
+    ports:
+      - "8001:8000"
+    environment:
+      - POSTGRES_URL=postgresql://rag:rag@postgres:5432/rag
+      - REDIS_URL=redis://redis:6379/0
+      - RETRIEVAL_BUDGET_MS=40
+      - CACHE_TTL_S=300
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  inference_worker:
+    build: ./services/inference_worker
+    ports:
+      - "8002:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - MAX_QUEUE_SIZE=32
+      - MAX_BATCH_SIZE=8
+      - BATCH_TIMEOUT_MS=10
+      - INFERENCE_LATENCY_MS=50
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Data stores
+  # ---------------------------------------------------------------------------
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      # Demo-only credentials. Override via environment for real deployments.
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: rag
+      POSTGRES_DB: rag
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres:/docker-entrypoint-initdb.d:ro
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Observability
+  # ---------------------------------------------------------------------------
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
