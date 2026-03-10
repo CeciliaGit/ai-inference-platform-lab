@@ -1,6 +1,12 @@
 # ai-inference-platform-lab
 
-This repository demonstrates a production-style AI inference platform skeleton designed to protect p95 latency under load through bounded concurrency, backpressure, dynamic batching, and degradation strategies. It is intentionally built as a systems-design lab rather than a feature demo.
+## Purpose
+
+This repository demonstrates the architecture of a distributed AI inference platform with Retrieval-Augmented Generation (RAG), designed to explore platform-level concerns such as admission control, multi-tenant fairness scheduling, bounded queues, and latency SLO enforcement.
+
+The system models how modern AI platforms route and protect inference workloads under burst traffic while maintaining predictable latency.
+
+This repository focuses on the **platform architecture of AI systems** rather than model development.
 
 ## Architectural Goals
 
@@ -22,6 +28,20 @@ This repository demonstrates a production-style AI inference platform skeleton d
 - **RAG-style pipeline** — pgvector-backed retrieval and inference services wired end-to-end via `/ask`.
 - **Microservice decomposition** — three independently deployable FastAPI services (router, retrieval, inference) communicate over HTTP, making each layer replaceable and scalable on its own.
 - **Observability-first design** — Prometheus metrics exposed per service and scraped every 15 s.
+
+## Architecture Overview
+
+The lab simulates a simplified AI inference platform composed of:
+
+- **Router API** — admission control, request routing, tenant isolation
+- **Retrieval Service** — vector search using PostgreSQL + pgvector
+- **Inference Worker** — batching, bounded queues, latency-aware scheduling
+- **Redis** — caching and coordination
+- **PostgreSQL (pgvector)** — document embeddings and semantic search
+- **Prometheus** — observability and performance metrics
+
+The architecture models the key layers of a production inference stack: API gateway, request orchestration, retrieval pipeline, and inference execution.
+
 
 ## Architecture at a glance
 
@@ -193,7 +213,20 @@ docker compose down -v
 
 > Demo credentials are intentionally non-secret and for local use only.
 
-## Load test (Milestone 5)
+
+## Load Testing
+
+The platform was load tested using Locust to simulate burst traffic and validate system behavior under concurrency.
+
+Key behaviors explored:
+
+- admission control under burst load
+- queue saturation and backpressure
+- latency SLO protection
+- degradation behavior when workers are saturated
+
+Metrics were collected using Prometheus and analyzed to observe p95 latency behavior and failure modes.
+
 
 Script: `scripts/load_test/run.py` — async httpx, configurable workers/duration/RPS.
 
@@ -226,3 +259,29 @@ python3 -m venv /tmp/lt_venv && /tmp/lt_venv/bin/pip install httpx==0.28.1 -q
 Degraded responses occur intentionally when the retrieval latency budget expires, allowing the system to preserve end-to-end responsiveness under load.
 
 Under higher load (≥ 200 concurrent users), queue saturation produces visible rejection (429/503) rather than unbounded latency growth, enforcing the declared SLO policy.
+
+
+## Architecture Experiments
+
+This lab explores several architectural tradeoffs commonly found in large-scale AI inference systems:
+
+- admission control vs queue buffering
+- fairness scheduling across tenants
+- latency protection under burst traffic
+- cache usage to reduce inference load
+- observability of inference pipelines
+
+The goal is to model platform-level behavior rather than model quality.
+
+## Future Work
+
+Potential extensions to this lab include:
+
+- GPU-backed inference workers
+- dynamic batching strategies
+- semantic caching layers
+- multi-region inference routing
+- tenant-aware admission policies
+- vector search optimizations
+
+
