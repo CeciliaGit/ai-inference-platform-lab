@@ -6,11 +6,16 @@
 
 ## Purpose
 
-This repository demonstrates the architecture of a distributed AI inference platform with Retrieval-Augmented Generation (RAG), designed to explore platform-level concerns such as admission control, multi-tenant fairness scheduling, bounded queues, and latency SLO enforcement.
+This repository demonstrates a distributed AI inference platform designed to explore how modern LLM systems protect latency SLOs under burst traffic. It focuses on platform-level concerns such as admission control, multi-tenant fairness, bounded queues, graceful degradation, and observability rather than model development.
 
-The system models how modern AI platforms route and protect inference workloads under burst traffic while maintaining predictable latency.
+## Why this project matters
 
-This repository focuses on the **platform architecture of AI systems** rather than model development.
+This lab models the control-plane problems found in real AI platforms:
+- protecting p95 latency under burst traffic
+- isolating tenants so noisy workloads do not starve others
+- degrading gracefully when inference capacity is saturated
+- making overload behavior observable and measurable
+
 
 ## Architectural Goals
 
@@ -35,6 +40,16 @@ This repository focuses on the **platform architecture of AI systems** rather th
 
 ## Architecture Overview
 
+## Key platform mechanisms
+
+- Deadline-aware admission control at the router
+- Bounded queues to prevent tail-latency collapse
+- Retrieval latency budget with cache fallback
+- Dynamic batching in the inference worker
+- Graceful degradation when workers reject overloaded requests
+- Prometheus metrics for queue depth, latency, and degradation events
+
+
 The architecture models the key layers of a production inference stack: API gateway, request orchestration, retrieval pipeline, and inference execution.
 
 
@@ -49,7 +64,7 @@ The architecture models the key layers of a production inference stack: API gate
 | `redis` | Retrieval cache + semantic cache (Milestone 2+) |
 | `prometheus` | Scrapes metrics from all three services every 15 s |
 
-## Architecture
+## Architecture Diagram
 
 ```mermaid
 graph TB
@@ -166,7 +181,7 @@ If inference returns **429**:
 
 ## Performance and Scaling Model
 
-The system scales horizontally.
+The gateway, retrieval layer, and inference workers are designed to scale independently.
 
 | Layer | Scaling Strategy |
 |------|------------------|
@@ -197,8 +212,67 @@ The system scales horizontally.
 | DB timeout | stale cache used |
 
 ---
+## Load Testing
+
+This lab demonstrates that bounded queues and admission control preserve end-to-end responsiveness under burst traffic by shedding excess load rather than allowing unbounded latency growth.
+
+The platform was load tested using a custom async `httpx` script to simulate burst traffic and validate system behavior under concurrency.
+
+Key behaviors explored:
+
+- admission control under burst load
+- queue saturation and backpressure
+- latency SLO protection
+- degradation behavior when workers are saturated
+
+Metrics were collected using Prometheus and analyzed to observe p95 latency behavior and failure modes.
+
+
+Script: `scripts/load_test/run.py` — async httpx, configurable workers/duration/RPS.
+
+```bash
+# Install dependency (one-time)
+python3 -m venv /tmp/lt_venv && /tmp/lt_venv/bin/pip install httpx==0.28.1 -q
+
+# Default run: 20 workers, 30 seconds, unlimited RPS
+/tmp/lt_venv/bin/python3 scripts/load_test/run.py
+
+# Throttled: 50 RPS cap
+/tmp/lt_venv/bin/python3 scripts/load_test/run.py --rps 50
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--url` | `http://localhost:8000` | Base URL of `router_api` |
+| `--workers` | `20` | Concurrent async workers |
+| `--duration` | `30` | Test duration in seconds |
+| `--rps` | `0` (unlimited) | Target requests/sec; `0` = unlimited |
+
+### Baseline results (20 workers, 30 s, default docker-compose config)
+
+| Metric | Value |
+|---|---|
+| Throughput | **134.9 req/s** |
+| p50 latency | 150.8 ms |
+| p90 latency | 205.6 ms |
+| p95 latency | **253.3 ms** |
+| p99 latency | 319.6 ms |
+| max latency | 446.4 ms |
+| 200 OK | 100 % (4 046 / 4 046) |
+| outcome: tier1 | 89.5 % |
+| outcome: degraded | 10.5 % |
+| 503 / errors | 0 |
+
+Degraded responses occur intentionally when the retrieval latency budget expires, allowing the system to preserve end-to-end responsiveness under load.
+
+Under higher load (≥ 200 concurrent users), queue saturation produces visible rejection (429/503) rather than unbounded latency growth, enforcing the declared SLO policy.
+
+
+---
 
 ## Quick Start
+
+The repository uses a Makefile to standardize common developer and testing workflows.
 
 Start the full platform:
 ```
@@ -349,64 +423,6 @@ retrieval_requests_total
 
 ---
 
-## Load Testing
-
-Run:
-```
-make loadtest
-```
-
-The platform was load tested using a custom async `httpx` script to simulate burst traffic and validate system behavior under concurrency.
-
-Key behaviors explored:
-
-- admission control under burst load
-- queue saturation and backpressure
-- latency SLO protection
-- degradation behavior when workers are saturated
-
-Metrics were collected using Prometheus and analyzed to observe p95 latency behavior and failure modes.
-
-
-Script: `scripts/load_test/run.py` — async httpx, configurable workers/duration/RPS.
-
-```bash
-# Install dependency (one-time)
-python3 -m venv /tmp/lt_venv && /tmp/lt_venv/bin/pip install httpx==0.28.1 -q
-
-# Default run: 20 workers, 30 seconds, unlimited RPS
-/tmp/lt_venv/bin/python3 scripts/load_test/run.py
-
-# Throttled: 50 RPS cap
-/tmp/lt_venv/bin/python3 scripts/load_test/run.py --rps 50
-```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--url` | `http://localhost:8000` | Base URL of `router_api` |
-| `--workers` | `20` | Concurrent async workers |
-| `--duration` | `30` | Test duration in seconds |
-| `--rps` | `0` (unlimited) | Target requests/sec; `0` = unlimited |
-
-### Baseline results (20 workers, 30 s, default docker-compose config)
-
-| Metric | Value |
-|---|---|
-| Throughput | **134.9 req/s** |
-| p50 latency | 150.8 ms |
-| p90 latency | 205.6 ms |
-| p95 latency | **253.3 ms** |
-| p99 latency | 319.6 ms |
-| max latency | 446.4 ms |
-| 200 OK | 100 % (4 046 / 4 046) |
-| outcome: tier1 | 89.5 % |
-| outcome: degraded | 10.5 % |
-| 503 / errors | 0 |
-
-Degraded responses occur intentionally when the retrieval latency budget expires, allowing the system to preserve end-to-end responsiveness under load.
-
-Under higher load (≥ 200 concurrent users), queue saturation produces visible rejection (429/503) rather than unbounded latency growth, enforcing the declared SLO policy.
-
 
 ---
 
@@ -476,9 +492,15 @@ The goal is to model platform-level behavior rather than model quality.
 Potential extensions to this lab include:
 
 - GPU-backed inference workers
-- dynamic batching strategies
 - semantic caching layers
 - multi-region inference routing
-- tenant-aware admission policies
 - vector search optimizations
+- hierarchical DRR scheduling for tenant fairness
+- deadline-aware admission control based on queue wait prediction
 
+---
+## Extended Architecture Documentation
+
+A TOGAF-style architecture view of the platform is available in `docs/`.
+
+---
