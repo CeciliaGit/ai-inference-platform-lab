@@ -1,12 +1,6 @@
 import asyncio
 from unittest.mock import MagicMock
 
-from fastapi.testclient import TestClient
-
-from app.main import app
-
-client = TestClient(app)
-
 
 def _full_queue(size: int = 32) -> MagicMock:
     """Return a mock Queue whose full() always returns True."""
@@ -28,20 +22,20 @@ def _race_queue(size: int = 32) -> MagicMock:
     return q
 
 
-def test_full_queue_returns_429(monkeypatch):
+def test_full_queue_returns_429(client, monkeypatch):
     monkeypatch.setattr("app.main._queue", _full_queue())
     resp = client.post("/infer", json={"prompt": "test", "max_tokens": 32, "tenant": "demo"})
     assert resp.status_code == 429
     assert "queue" in resp.json()["detail"].lower()
 
 
-def test_full_queue_detail_message(monkeypatch):
+def test_full_queue_detail_message(client, monkeypatch):
     monkeypatch.setattr("app.main._queue", _full_queue())
     resp = client.post("/infer", json={"prompt": "test"})
     assert resp.json()["detail"] == "Inference queue full"
 
 
-def test_put_nowait_race_returns_429(monkeypatch):
+def test_put_nowait_race_returns_429(client, monkeypatch):
     """Covers the race between the full() check and put_nowait()."""
     monkeypatch.setattr("app.main._queue", _race_queue())
     resp = client.post("/infer", json={"prompt": "test"})

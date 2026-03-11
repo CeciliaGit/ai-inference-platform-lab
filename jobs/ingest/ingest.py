@@ -149,6 +149,7 @@ DOCUMENTS = [
 # Ingestion
 # ---------------------------------------------------------------------------
 
+
 async def ingest(conn: asyncpg.Connection, doc: dict) -> None:
     doc_row = build_document_row(doc["doc_id"], doc["source"], doc["version"])
     chunk_rows = build_chunk_rows(doc["doc_id"], doc["chunks"], doc["version"])
@@ -162,10 +163,12 @@ async def ingest(conn: asyncpg.Connection, doc: dict) -> None:
           SET source = EXCLUDED.source,
               version = EXCLUDED.version
         """,
-        doc_row["doc_id"], doc_row["source"], doc_row["version"],
+        doc_row["doc_id"],
+        doc_row["source"],
+        doc_row["version"],
     )
 
-    for crow, erow in zip(chunk_rows, embedding_rows):
+    for crow, erow in zip(chunk_rows, embedding_rows, strict=True):
         await conn.execute(
             """
             INSERT INTO chunks (chunk_id, doc_id, chunk_index, text, version)
@@ -175,7 +178,11 @@ async def ingest(conn: asyncpg.Connection, doc: dict) -> None:
                   version = EXCLUDED.version,
                   updated_at = now()
             """,
-            crow["chunk_id"], crow["doc_id"], crow["chunk_index"], crow["text"], crow["version"],
+            crow["chunk_id"],
+            crow["doc_id"],
+            crow["chunk_index"],
+            crow["text"],
+            crow["version"],
         )
 
         await conn.execute(
@@ -187,7 +194,9 @@ async def ingest(conn: asyncpg.Connection, doc: dict) -> None:
                   model_id  = EXCLUDED.model_id,
                   created_at = now()
             """,
-            erow["chunk_id"], erow["vector_literal"], erow["model_id"],
+            erow["chunk_id"],
+            erow["vector_literal"],
+            erow["model_id"],
         )
 
         print(f"  ingested {crow['chunk_id']}")

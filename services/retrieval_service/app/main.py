@@ -116,6 +116,7 @@ def health():
 # POST /retrieve
 # ---------------------------------------------------------------------------
 
+
 class RetrieveRequest(BaseModel):
     query: str
     tenant: str = "demo"
@@ -155,8 +156,13 @@ async def _query_db(vector_literal: str, top_k: int) -> list[ChunkResult]:
         EMBED_MODEL_ID,
     )
     return [
-        ChunkResult(chunk_id=r["chunk_id"], doc_id=r["doc_id"],
-                    version=r["version"], text=r["text"], distance=r["distance"])
+        ChunkResult(
+            chunk_id=r["chunk_id"],
+            doc_id=r["doc_id"],
+            version=r["version"],
+            text=r["text"],
+            distance=r["distance"],
+        )
         for r in rows
     ]
 
@@ -197,13 +203,13 @@ async def retrieve(req: RetrieveRequest):
         RETRIEVAL_REQUESTS.labels(outcome="db").inc()
         return RetrieveResponse(source="db", results=results)
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         RETRIEVAL_DB_LATENCY_MS.observe((time.perf_counter() - start) * 1000)
         RETRIEVAL_REQUESTS.labels(outcome="timeout").inc()
         hit = await _try_cache(key)
         if hit:
             return hit
-        raise HTTPException(status_code=503, detail="retrieval timeout and cache miss")
+        raise HTTPException(status_code=503, detail="retrieval timeout and cache miss") from None
 
     except Exception:
         RETRIEVAL_REQUESTS.labels(outcome="error").inc()
@@ -218,4 +224,4 @@ async def retrieve(req: RetrieveRequest):
         hit = await _try_cache(key)
         if hit:
             return hit
-        raise HTTPException(status_code=503, detail="retrieval error and cache miss")
+        raise HTTPException(status_code=503, detail="retrieval error and cache miss") from None

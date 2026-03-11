@@ -1,6 +1,7 @@
 import os
 import random
-from locust import HttpUser, task, between
+
+from locust import HttpUser, between, task
 
 HOST = os.environ.get("TARGET_HOST", "http://localhost:8000")
 
@@ -12,6 +13,7 @@ QUERIES = [
     "dynamic batching latency p95",
     "queue backpressure overload 429",
 ]
+
 
 class AskUser(HttpUser):
     host = HOST

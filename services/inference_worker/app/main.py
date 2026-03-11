@@ -43,6 +43,7 @@ QUEUE_DEPTH = Gauge(
 # Request / response models
 # ---------------------------------------------------------------------------
 
+
 class InferRequest(BaseModel):
     prompt: str
     max_tokens: int = Field(default=256, ge=1, le=2048)
@@ -60,6 +61,7 @@ class InferResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # In-process queue and batch worker
 # ---------------------------------------------------------------------------
+
 
 class _PendingItem:
     __slots__ = ("req", "future", "enqueued_at")
@@ -85,7 +87,7 @@ async def _collect_batch(first: _PendingItem) -> list[_PendingItem]:
         try:
             item = await asyncio.wait_for(_queue.get(), timeout=remaining)
             batch.append(item)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             break
     return batch
 
@@ -112,7 +114,7 @@ async def _batch_worker():
     while True:
         try:
             first = await asyncio.wait_for(_queue.get(), timeout=1.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             continue
 
         batch = await _collect_batch(first)
@@ -173,7 +175,7 @@ async def infer(req: InferRequest):
         QUEUE_DEPTH.set(_queue.qsize())
     except asyncio.QueueFull:
         INFERENCE_REQUESTS.labels(outcome="rejected").inc()
-        raise HTTPException(status_code=429, detail="Inference queue full")
+        raise HTTPException(status_code=429, detail="Inference queue full") from None
 
     try:
         return await future
@@ -181,4 +183,4 @@ async def infer(req: InferRequest):
         raise
     except Exception:
         INFERENCE_REQUESTS.labels(outcome="error").inc()
-        raise HTTPException(status_code=500, detail="Inference failed")
+        raise HTTPException(status_code=500, detail="Inference failed") from None

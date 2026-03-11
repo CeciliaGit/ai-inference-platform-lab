@@ -1,4 +1,3 @@
-import asyncio
 import os
 
 from fastapi.testclient import TestClient
@@ -21,7 +20,7 @@ client = TestClient(app)
 
 def test_retrieve_timeout_uses_cache(monkeypatch):
     async def fake_query_db(vector_literal, top_k):
-        raise asyncio.TimeoutError()
+        raise TimeoutError()
 
     monkeypatch.setattr("app.main._query_db", fake_query_db)
     monkeypatch.setattr("app.main._redis", DummyRedis())

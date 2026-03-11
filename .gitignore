@@ -12,6 +12,10 @@ build/
 
 # Virtual environments
 .venv/
+.venv-ingest/
+.venv-loadtest/
+.venv-lint/
+.venv-test/
 venv/
 env/
 ENV/

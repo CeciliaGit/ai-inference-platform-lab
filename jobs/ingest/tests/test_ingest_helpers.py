@@ -18,10 +18,10 @@ from ingest import (  # noqa: E402
     to_vector_literal,
 )
 
-
 # ---------------------------------------------------------------------------
 # hash_embed
 # ---------------------------------------------------------------------------
+
 
 def test_hash_embed_is_deterministic():
     assert hash_embed("Hello world") == hash_embed("Hello world")
@@ -50,6 +50,7 @@ def test_hash_embed_empty_string_returns_zero_vector():
 # ---------------------------------------------------------------------------
 # chunk_text
 # ---------------------------------------------------------------------------
+
 
 def test_chunk_text_no_overlap():
     assert chunk_text("abcdef", chunk_size=2, overlap=0) == ["ab", "cd", "ef"]
@@ -107,6 +108,7 @@ def test_chunk_text_preserves_all_content():
 # chunk_id
 # ---------------------------------------------------------------------------
 
+
 def test_chunk_id_zero_padded():
     assert chunk_id("doc-001", 0) == "doc-001-chunk-000"
     assert chunk_id("doc-001", 9) == "doc-001-chunk-009"
@@ -124,6 +126,7 @@ def test_chunk_id_unique_per_index():
 # ---------------------------------------------------------------------------
 # to_vector_literal
 # ---------------------------------------------------------------------------
+
 
 def test_vector_literal_brackets():
     lit = to_vector_literal([1.0, -0.5, 0.0])
@@ -148,6 +151,7 @@ def test_vector_literal_element_count():
 # build_document_row
 # ---------------------------------------------------------------------------
 
+
 def test_build_document_row_keys():
     row = build_document_row("doc-001", "sample/intro.txt", "v1")
     assert row == {"doc_id": "doc-001", "source": "sample/intro.txt", "version": "v1"}
@@ -161,6 +165,7 @@ def test_build_document_row_values_are_strings():
 # ---------------------------------------------------------------------------
 # build_chunk_rows
 # ---------------------------------------------------------------------------
+
 
 def test_build_chunk_rows_count():
     rows = build_chunk_rows("doc-001", ["a", "b", "c"], "v1")
@@ -199,6 +204,7 @@ def test_build_chunk_rows_empty_chunks_list():
 # ---------------------------------------------------------------------------
 # build_embedding_rows
 # ---------------------------------------------------------------------------
+
 
 def test_build_embedding_rows_count():
     chunk_rows = build_chunk_rows("doc-001", ["text a", "text b"], "v1")

@@ -1,4 +1,3 @@
-import httpx
 import pytest
 from app.main import _infer_with_retry
 

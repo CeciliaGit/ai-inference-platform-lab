@@ -11,6 +11,7 @@ Options:
     --duration  Test duration in seconds (default: 30)
     --rps       Target requests/sec across all workers, 0 = unlimited (default: 0)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,6 +52,7 @@ PAYLOAD_TEMPLATE = {
 # Result record
 # ---------------------------------------------------------------------------
 
+
 class Result(NamedTuple):
     latency_ms: float
     http_status: int
@@ -60,6 +62,7 @@ class Result(NamedTuple):
 # ---------------------------------------------------------------------------
 # Worker
 # ---------------------------------------------------------------------------
+
 
 async def worker(
     client: httpx.AsyncClient,
@@ -93,7 +96,9 @@ async def worker(
             else:
                 outcome = "error"
 
-            results.append(Result(latency_ms=latency_ms, http_status=resp.status_code, outcome=outcome))
+            results.append(
+                Result(latency_ms=latency_ms, http_status=resp.status_code, outcome=outcome)
+            )
         except Exception as exc:
             latency_ms = (time.perf_counter() - t0) * 1000
             results.append(Result(latency_ms=latency_ms, http_status=0, outcome="exception"))
@@ -103,6 +108,7 @@ async def worker(
 # ---------------------------------------------------------------------------
 # Rate limiter ticker
 # ---------------------------------------------------------------------------
+
 
 async def rps_ticker(sem: asyncio.Semaphore, target_rps: float, stop_event: asyncio.Event) -> None:
     interval = 1.0 / target_rps
@@ -114,6 +120,7 @@ async def rps_ticker(sem: asyncio.Semaphore, target_rps: float, stop_event: asyn
 # ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
+
 
 def _pct(data: list[float], p: float) -> float:
     if not data:
@@ -171,17 +178,21 @@ def print_report(results: list[Result], duration_s: float, workers: int) -> None
 # Main
 # ---------------------------------------------------------------------------
 
+
 async def main() -> None:
     parser = argparse.ArgumentParser(description="router_api load test")
     parser.add_argument("--url", default="http://localhost:8000")
     parser.add_argument("--workers", type=int, default=20)
     parser.add_argument("--duration", type=int, default=30)
-    parser.add_argument("--rps", type=float, default=0,
-                        help="Target RPS across all workers (0 = unlimited)")
+    parser.add_argument(
+        "--rps", type=float, default=0, help="Target RPS across all workers (0 = unlimited)"
+    )
     args = parser.parse_args()
 
-    print(f"Load test: {args.url}/ask  workers={args.workers}  "
-          f"duration={args.duration}s  rps={'unlimited' if args.rps == 0 else args.rps}")
+    print(
+        f"Load test: {args.url}/ask  workers={args.workers}  "
+        f"duration={args.duration}s  rps={'unlimited' if args.rps == 0 else args.rps}"
+    )
 
     results: list[Result] = []
     stop_event = asyncio.Event()
@@ -196,11 +207,16 @@ async def main() -> None:
     # Stagger query offsets across workers so they don't all send identical queries
     async with httpx.AsyncClient(timeout=10.0) as client:
         worker_tasks = [
-            asyncio.create_task(worker(
-                client, args.url, results, stop_event,
-                rps_sem,
-                QUERIES[i % len(QUERIES):] + QUERIES[:i % len(QUERIES)],
-            ))
+            asyncio.create_task(
+                worker(
+                    client,
+                    args.url,
+                    results,
+                    stop_event,
+                    rps_sem,
+                    QUERIES[i % len(QUERIES) :] + QUERIES[: i % len(QUERIES)],
+                )
+            )
             for i in range(args.workers)
         ]
 
