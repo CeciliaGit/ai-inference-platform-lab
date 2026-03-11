@@ -10,11 +10,14 @@ This repository demonstrates a distributed AI inference platform designed to exp
 
 ## Why this project matters
 
-This lab models the control-plane problems found in real AI platforms:
+Modern AI platforms must protect latency SLOs while serving bursty,
+multi-tenant inference workloads.
+
+This lab focuses on platform-level behavior rather than model quality:
 - protecting p95 latency under burst traffic
-- isolating tenants so noisy workloads do not starve others
-- degrading gracefully when inference capacity is saturated
-- making overload behavior observable and measurable
+- isolating tenants to prevent noisy-neighbor effects
+- degrading gracefully when compute capacity is saturated
+- exposing system behavior through observability metrics
 
 
 ## Architectural Goals
