@@ -501,6 +501,6 @@ Potential extensions to this lab include:
 ---
 ## Extended Architecture Documentation
 
-A TOGAF-style architecture view of the platform is available in `docs/`.
+A TOGAF-style architecture view of the platform is available in `docs/` [TOGAF-Style Architecture Definition](docs/ai_inference_platform_lab_TOGAF_architecture.md).
 
 ---
