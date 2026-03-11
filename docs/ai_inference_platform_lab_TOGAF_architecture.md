@@ -134,7 +134,7 @@ Capability map (what the platform must be able to do):
 
 The platform stores documents as chunks with an embedding per chunk (vector(384)).
 
-![Architecture](logical-components.png)
+![Architecture](relational-model.png)
 
 *Figure 2 — Simplified relational model used for retrieval*
 
