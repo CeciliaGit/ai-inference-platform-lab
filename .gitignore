@@ -12,6 +12,10 @@ build/
 
 # Virtual environments
 .venv/
+.venv-ingest/
+.venv-loadtest/
+.venv-lint/
+.venv-test/
 venv/
 env/
 ENV/
@@ -41,6 +45,9 @@ htmlcov/
 
 # Docker
 *.log
+
+# Local Claude guidance (not for remote)
+CLAUDE.md
 
 # Locust generated artifacts
 docs/locust_*.csv

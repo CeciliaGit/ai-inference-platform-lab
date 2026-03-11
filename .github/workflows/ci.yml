@@ -1,0 +1,139 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ruff
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+  test-router-api:
+    name: test-router-api
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio httpx
+          pip install -r services/router_api/requirements.txt
+
+      - name: Require tests directory
+        run: test -d services/router_api/tests
+
+      - name: Run tests
+        run: pytest -q services/router_api/tests
+
+  test-retrieval-service:
+    name: test-retrieval-service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest httpx
+          pip install -r services/retrieval_service/requirements.txt
+
+      - name: Require tests directory
+        run: test -d services/retrieval_service/tests
+
+      - name: Run tests
+        env:
+          POSTGRES_URL: postgresql://rag:rag@localhost:5432/rag
+          REDIS_URL: redis://localhost:6379/0
+        run: pytest -q services/retrieval_service/tests
+
+  test-inference-worker:
+    name: test-inference-worker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest httpx
+          pip install -r services/inference_worker/requirements.txt
+
+      - name: Require tests directory
+        run: test -d services/inference_worker/tests
+
+      - name: Run tests
+        run: pytest -q services/inference_worker/tests
+
+  build-router-api:
+    name: build-router-api
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        run: docker build -t router-api-test ./services/router_api
+
+  build-retrieval-service:
+    name: build-retrieval-service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        run: docker build -t retrieval-service-test ./services/retrieval_service
+
+  build-inference-worker:
+    name: build-inference-worker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        run: docker build -t inference-worker-test ./services/inference_worker
+
+  compose-build:
+    name: compose-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Docker Compose build
+        run: docker compose build

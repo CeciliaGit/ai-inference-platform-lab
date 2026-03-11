@@ -90,6 +90,7 @@ def health():
 # POST /ask
 # ---------------------------------------------------------------------------
 
+
 class AskRequest(BaseModel):
     query: str
     tenant: str = "demo"
@@ -158,9 +159,7 @@ async def _retrieve(
     return chunks, retrieval_source, retrieval_ms
 
 
-async def _infer_once(
-    prompt: str, max_tokens: int, tenant: str
-) -> httpx.Response | None:
+async def _infer_once(prompt: str, max_tokens: int, tenant: str) -> httpx.Response | None:
     """POST to inference_worker; observe latency; return response or None on exception."""
     start = time.perf_counter()
     try:
@@ -237,8 +236,9 @@ async def ask(req: AskRequest):
         i_resp, had_context = await _infer_with_retry(req.query, chunks, req.max_tokens, req.tenant)
 
         if i_resp is not None and i_resp.status_code == 200:
-            return _make_ok_response(i_resp.json(), had_context, chunks,
-                                     retrieval_source, retrieval_ms, req_start)
+            return _make_ok_response(
+                i_resp.json(), had_context, chunks, retrieval_source, retrieval_ms, req_start
+            )
 
         rejected = i_resp is not None and i_resp.status_code == 429
         if rejected:
