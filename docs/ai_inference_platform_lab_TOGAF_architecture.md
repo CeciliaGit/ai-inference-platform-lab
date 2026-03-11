@@ -61,7 +61,7 @@ LLM/AI inference systems often fail in the worst possible way under burst traffi
 
 Logical component view (lab topology):
 
-![](ai_inference_platform_lab_TOGAF_architecture-media/media/image1.png)
+![Architecture](logical-components.png)
 
 *Figure 1 — Logical components and interactions*
 
@@ -134,7 +134,7 @@ Capability map (what the platform must be able to do):
 
 The platform stores documents as chunks with an embedding per chunk (vector(384)).
 
-![](ai_inference_platform_lab_TOGAF_architecture-media/media/image2.png)
+![Architecture](logical-components.png)
 
 *Figure 2 — Simplified relational model used for retrieval*
 
