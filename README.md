@@ -1,4 +1,8 @@
-# ai-inference-platform-lab
+# AI Inference Platform Lab
+
+![CI](https://github.com/CeciliaGit/ai-inference-platform-lab/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/python-3.12-blue)
+![Docker](https://img.shields.io/badge/docker-compose-blue)
 
 ## Purpose
 
@@ -31,15 +35,6 @@ This repository focuses on the **platform architecture of AI systems** rather th
 
 ## Architecture Overview
 
-The lab simulates a simplified AI inference platform composed of:
-
-- **Router API** — admission control, request routing, tenant isolation
-- **Retrieval Service** — vector search using PostgreSQL + pgvector
-- **Inference Worker** — batching, bounded queues, latency-aware scheduling
-- **Redis** — caching and coordination
-- **PostgreSQL (pgvector)** — document embeddings and semantic search
-- **Prometheus** — observability and performance metrics
-
 The architecture models the key layers of a production inference stack: API gateway, request orchestration, retrieval pipeline, and inference execution.
 
 
@@ -54,7 +49,7 @@ The architecture models the key layers of a production inference stack: API gate
 | `redis` | Retrieval cache + semantic cache (Milestone 2+) |
 | `prometheus` | Scrapes metrics from all three services every 15 s |
 
-### System topology
+## Architecture
 
 ```mermaid
 graph TB
@@ -84,6 +79,30 @@ graph TB
     prometheus -.->|"/metrics"| retrieval
     prometheus -.->|"/metrics"| inference
 ```
+
+## End-to-End Request Flow
+
+1. Client sends query to **Router API**
+
+        POST /ask
+
+2. Router calls **Retrieval Service**
+
+3. Retrieval performs:
+
+    - query embedding
+    - vector similarity search
+    - Redis cache lookup
+
+4. Router builds prompt with retrieved context
+
+5. Router sends prompt to **Inference Worker**
+
+6. Inference Worker executes model and returns response
+
+7. Router returns final response to the client
+
+---
 
 ### Request flow — `/ask` and the degradation ladder
 
@@ -132,6 +151,132 @@ sequenceDiagram
     end
 ```
 
+## Degradation Strategy
+
+The router protects latency SLOs using graceful degradation.
+
+If inference returns **429**:
+
+1. Retry request **without retrieval context**
+2. Attempt smaller prompt
+3. Return degraded response if successful
+4. Otherwise return **503**
+
+---
+
+## Performance and Scaling Model
+
+The system scales horizontally.
+
+| Layer | Scaling Strategy |
+|------|------------------|
+| Router API | Stateless replicas |
+| Retrieval Service | Horizontal scaling |
+| Inference Worker | Horizontal workers |
+| Postgres | Vertical scale / read replicas |
+| Redis | Distributed cache |
+
+---
+
+### Latency Composition
+
+- Retrieval: 10–40 ms
+- Prompt build: <5 ms
+- Inference: dominant latency
+
+---
+
+## Failure Modes
+
+| Failure | System Behavior |
+|-------|----------------|
+| Retrieval timeout | fallback to Redis cache |
+| Redis unavailable | DB retrieval only |
+| Inference queue full | router retry without context |
+| System overload | router returns 503 |
+| DB timeout | stale cache used |
+
+---
+
+## Quick Start
+
+Start the full platform:
+```
+make up
+```
+Seed the database:
+```
+make ingest
+```
+Run load test:
+```
+make loadtest
+```
+Stop services:
+```
+make down
+```
+---
+
+## Developer Commands
+
+Run:
+```
+make help
+```
+
+Commands
+
+```
+make up
+make dev
+make logs
+make down
+make ingest
+make loadtest
+make lint
+make test
+make clean
+make clean-all
+```
+
+---
+## Offline Ingest Pipeline
+
+The ingest job is a **one-shot offline script**.
+
+Prerequisites:
+```bash
+# One-time: install ingest dependency
+pip install -r jobs/ingest/requirements.txt
+
+# Set the connection URL (matches the running docker-compose stack)
+export POSTGRES_URL=postgresql://rag:rag@localhost:5432/rag
+```
+
+Run:
+```
+make ingest
+```
+---
+
+This executes:
+```
+python jobs/ingest/ingest.py
+```
+
+Pipeline:
+
+1. read source documents
+2. chunk text
+3. compute embeddings
+4. insert rows into:
+    - documents
+    - chunks
+    - embeddings
+
+---
+
 ### Ingest pipeline (offline)
 
 ```mermaid
@@ -154,44 +299,33 @@ graph LR
     tchunks -->|"chunk_id FK"| tembed
 ```
 
-## Milestones
+> **Note:** `hash_embed()` is duplicated verbatim in `jobs/ingest/ingest.py` and `services/retrieval_service/app/main.py`; both files must be updated together if the embedding function changes.
 
-| | |
-|---|---|
-| ✅ Milestone 0 | Scaffold + metrics |
-| ✅ Milestone 1 | Schema + ingestion + retrieval top-k |
-| ✅ Milestone 2 | Retrieval latency budget + cache fallback |
-| ✅ Milestone 3 | Inference queue + batching |
-| ✅ Milestone 4 | `/ask` end-to-end + degradation ladder |
-| ✅ Milestone 5 | Load test + p95 results |
+---
 
-## How to run
+# Observability
 
-```bash
-docker compose up --build
+
+## Metrics and Observability
+
+Prometheus UI:
 ```
-
-All six containers start together. On first run Docker builds the three application images and pulls the data-store images; subsequent starts are faster.
-
-> **Note:** Credentials in `docker-compose.yml` are demo-only and intended for local development. Real deployments should inject secrets via environment variables or a secret manager.
-
-To stop and remove containers (data volumes are preserved):
-
-```bash
-docker compose down
+    http://localhost:9090
 ```
-
-## Local dev
-
-```bash
-# Rebuild and restart a single service
-docker compose up --build router_api
-
-# Tail logs for one service
-docker compose logs -f router_api
-
-# Reset all data (wipes postgres, redis, prometheus volumes)
-docker compose down -v
+Metric endpoints:
+```
+    http://localhost:8000/metrics
+    http://localhost:8001/metrics
+    http://localhost:8002/metrics
+```
+Example queries:
+```
+up
+ask_requests_total
+rate(ask_requests_total[1m])
+ask_latency_ms
+inference_queue_depth
+retrieval_requests_total
 ```
 
 ## Endpoints
@@ -213,10 +347,16 @@ docker compose down -v
 
 > Demo credentials are intentionally non-secret and for local use only.
 
+---
 
 ## Load Testing
 
-The platform was load tested using Locust to simulate burst traffic and validate system behavior under concurrency.
+Run:
+```
+make loadtest
+```
+
+The platform was load tested using a custom async `httpx` script to simulate burst traffic and validate system behavior under concurrency.
 
 Key behaviors explored:
 
@@ -241,6 +381,13 @@ python3 -m venv /tmp/lt_venv && /tmp/lt_venv/bin/pip install httpx==0.28.1 -q
 /tmp/lt_venv/bin/python3 scripts/load_test/run.py --rps 50
 ```
 
+| Flag | Default | Description |
+|---|---|---|
+| `--url` | `http://localhost:8000` | Base URL of `router_api` |
+| `--workers` | `20` | Concurrent async workers |
+| `--duration` | `30` | Test duration in seconds |
+| `--rps` | `0` (unlimited) | Target requests/sec; `0` = unlimited |
+
 ### Baseline results (20 workers, 30 s, default docker-compose config)
 
 | Metric | Value |
@@ -260,6 +407,57 @@ Degraded responses occur intentionally when the retrieval latency budget expires
 
 Under higher load (≥ 200 concurrent users), queue saturation produces visible rejection (429/503) rather than unbounded latency growth, enforcing the declared SLO policy.
 
+
+---
+
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and push to `main`.
+
+| Job | What it does |
+|---|---|
+| `lint` | `ruff check` + `ruff format --check` |
+| `test-router-api` | pytest for router service |
+| `test-retrieval-service` | pytest for retrieval service |
+| `test-inference-worker` | pytest for inference worker |
+| `build-router-api` | Docker image build |
+| `build-retrieval-service` | Docker image build |
+| `build-inference-worker` | Docker image build |
+| `compose-build` | Full `docker compose build` |
+
+All eight jobs are required status checks on `main`.
+
+---
+
+## Testing
+
+Each service has a `tests/` directory. Run them without a live stack:
+
+```bash
+# router_api
+pip install pytest pytest-asyncio -r services/router_api/requirements.txt
+pytest -q services/router_api/tests
+
+# inference_worker
+pip install pytest -r services/inference_worker/requirements.txt
+pytest -q services/inference_worker/tests
+
+# retrieval_service — needs Postgres + Redis reachable
+pip install pytest -r services/retrieval_service/requirements.txt
+POSTGRES_URL=postgresql://rag:rag@localhost:5432/rag \
+  REDIS_URL=redis://localhost:6379/0 \
+  pytest -q services/retrieval_service/tests
+
+# ingest helpers — pure functions, no live DB needed
+pip install pytest -r jobs/ingest/requirements.txt
+POSTGRES_URL=postgresql://rag:rag@localhost:5432/rag \
+  pytest -q jobs/ingest/tests
+```
+
+Or run everything at once: `make test` (requires all deps installed).
+
+---
 
 ## Architecture Experiments
 
@@ -283,5 +481,4 @@ Potential extensions to this lab include:
 - multi-region inference routing
 - tenant-aware admission policies
 - vector search optimizations
-
 

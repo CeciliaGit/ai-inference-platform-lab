@@ -42,6 +42,9 @@ htmlcov/
 # Docker
 *.log
 
+# Local Claude guidance (not for remote)
+CLAUDE.md
+
 # Locust generated artifacts
 docs/locust_*.csv
 scripts/load_test/results/
