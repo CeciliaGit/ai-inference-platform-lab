@@ -1,4 +1,4 @@
-# Load Test Results — Milestone 5A
+# Load Test Results
 
 Tool: **Locust 2.43.3** | Host: single macOS laptop (Docker Desktop)
 Date: 2026-02-14
