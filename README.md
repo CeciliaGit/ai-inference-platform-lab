@@ -166,7 +166,7 @@ Example results:
 
 ## Architecture Documentation
 
-A detailed architecture description is available in the repository: `docs/` [AI Inference Platform Architecture](docs/architecture/AI-Inference-Platform-Architecture-Description.md).
+A detailed architecture description is available in the repository: `docs/architecture/` [AI Inference Platform Architecture](docs/architecture/AI-Inference-Platform-Architecture-Description.md).
 
 This document provides a TOGAF-style architecture description including:
 - architecture principles
