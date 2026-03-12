@@ -45,3 +45,7 @@ htmlcov/
 # Locust generated artifacts
 docs/locust_*.csv
 scripts/load_test/results/
+
+
+# Local Claude guidance (not for remote)
+CLAUDE.md

@@ -1,228 +1,229 @@
-# ai-inference-platform-lab
+# AI Inference Platform Lab
 
-This repository demonstrates a production-style AI inference platform skeleton designed to protect p95 latency under load through bounded concurrency, backpressure, dynamic batching, and degradation strategies. It is intentionally built as a systems-design lab rather than a feature demo.
+This repository explores the **platform architecture of AI inference systems**, focusing on admission control, fairness scheduling, and latency protection under burst traffic rather than model development.
+
+The project models the control-plane mechanisms required to operate a multi-tenant inference platform reliably under unpredictable workloads.
+
+---
+
+## Purpose
+
+Modern AI applications rely on large language model inference services that must serve highly variable requests while maintaining predictable latency.
+
+Unlike traditional web services, inference workloads vary widely depending on prompt size, context retrieval, and generation length.
+
+This lab focuses on **platform-level architecture mechanisms** used to maintain system stability and predictable latency under burst traffic.
+
+---
+
+## Why This Project Matters
+
+Large inference systems face several operational challenges:
+- protecting latency SLOs under burst traffic
+- isolating tenants to prevent noisy-neighbor effects
+- handling variable request cost
+- maintaining predictable system behavior under overload
+
+This repository demonstrates architectural mechanisms used in real inference platforms to address these challenges.
+
+---
 
 ## Architectural Goals
 
-- Demonstrate SLO protection under load
-- Model backpressure vs tail latency tradeoffs
-- Implement bounded concurrency and degradation
-- Separate retrieval, routing, and inference layers
-- Instrument full-stack observability
+The platform is designed to achieve the following objectives:
+
+- maintain predictable latency under burst traffic conditions
+- isolate tenants through fairness scheduling
+- prevent latency collapse using bounded queues
+- degrade gracefully when inference capacity is saturated
+- expose internal system behavior through observability metrics
+
+---
 
 ### SLO Target
 
-- Protect p95 latency under saturation
-- Prefer fast-fail (429/503) over tail-latency inflation
+The system models a platform designed to protect latency targets such as:
 
-> **Note:** Inference latency is simulated to isolate concurrency and backpressure behavior independent of model execution cost.
 
-## What this repo demonstrates
 
-- **RAG-style pipeline** — pgvector-backed retrieval and inference services wired end-to-end via `/ask`.
-- **Microservice decomposition** — three independently deployable FastAPI services (router, retrieval, inference) communicate over HTTP, making each layer replaceable and scalable on its own.
-- **Observability-first design** — Prometheus metrics exposed per service and scraped every 15 s.
+|   **Metric**         | **Target**                      |
+| ---------------- | -------------------------------- |
+|   p95 latency    | < target threshold                   |
+|   queue depth    | bounded                          |
+|   failure mode   | fast fail or degraded response   |
 
-## Architecture at a glance
 
-| Container | Role |
-|---|---|
-| `router_api` | Admission control + orchestration (`/ask` in Milestone 4) |
-| `retrieval_service` | pgvector top-k retrieval with latency budget + cache fallback |
-| `inference_worker` | Queue cap + dynamic batching + simulated inference latency |
-| `postgres` (pgvector) | Document / chunk / embedding store |
-| `redis` | Retrieval cache + semantic cache (Milestone 2+) |
-| `prometheus` | Scrapes metrics from all three services every 15 s |
 
-### System topology
+The architecture prioritizes **latency protection over maximum throughput**.
 
-```mermaid
-graph TB
-    client["Client / Load Test"]
+---
 
-    subgraph app["Application Services"]
-        router["router_api :8000\nMAX_CONCURRENCY = 64\nHTTP_TIMEOUT_S = 2.0"]
-        retrieval["retrieval_service :8001\nBUDGET_MS = 40\nhash-embed-v1 · 384-dim"]
-        inference["inference_worker :8002\nQUEUE = 32 · BATCH = 8\nBATCH_TIMEOUT_MS = 10"]
-    end
+## What This Repository Demonstrates
 
-    subgraph data["Data Stores"]
-        postgres["PostgreSQL 16 / pgvector :5432\ndocuments · chunks · embeddings"]
-        redis["Redis 7 :6379\nretrieval cache · TTL = 300 s"]
-    end
+This lab models several architectural mechanisms used in large-scale inference systems:
+- distributed inference routing
+- retrieval-augmented generation pipeline
+- admission control at the platform boundary
+- bounded queues and backpressure
+- fairness scheduling across tenants
+- graceful degradation under overload
+- observability of platform behavior
 
-    subgraph obs["Observability"]
-        prometheus["Prometheus :9090\nscrape interval = 15 s"]
-    end
+The goal is to explore **platform reliability and behavior**, not model optimization.
 
-    client -->|"POST /ask"| router
-    router -->|"POST /retrieve"| retrieval
-    router -->|"POST /infer"| inference
-    retrieval -->|"vector search (cosine)"| postgres
-    retrieval <-->|"cache read / write"| redis
-    prometheus -.->|"/metrics"| router
-    prometheus -.->|"/metrics"| retrieval
-    prometheus -.->|"/metrics"| inference
-```
+---
 
-### Request flow — `/ask` and the degradation ladder
+## Architecture Overview
+
+The platform simulates a distributed inference system composed of routing, retrieval, and inference layers.
+
+Requests enter through a routing layer that enforces admission control, tenant isolation, and fairness policies before interacting with retrieval and inference services.
+
+The architecture separates control-plane responsibilities (routing, scheduling, and admission control) from execution-plane components (retrieval and inference workers) to maintain predictable latency under burst traffic.The platform simulates a distributed inference system composed of routing, retrieval, and inference layers.
+
+Requests enter through a routing layer that enforces admission control and fairness policies before interacting with retrieval and inference services.
+
+---
+
+## Architecture Diagram
 
 ```mermaid
-sequenceDiagram
-    participant C  as Client
-    participant R  as router_api
-    participant RS as retrieval_service
-    participant IW as inference_worker
-    participant PG as PostgreSQL
-    participant RD as Redis
+flowchart TD
+    A[Client / Tenant]
 
-    C->>R: POST /ask {query, tenant, top_k}
-    Note over R: Gate: _in_flight < MAX_CONCURRENCY (64)<br/>→ 503 if full
+    B[Router API<br/>Admission Control<br/>Rate Limits]
 
-    R->>RS: POST /retrieve
-    RS->>RD: GET cache key
+    C[Fairness Scheduler<br/>Tenant Queues]
 
-    alt Cache hit
-        RD-->>RS: cached chunks (JSON)
-        RS-->>R: {source:"cache", results}
-    else Cache miss — query DB within 40 ms budget
-        RS->>PG: SELECT … ORDER BY embedding <=> $1 LIMIT $2
-        PG-->>RS: top-k chunks
-        RS->>RD: SET cache (TTL = 300 s)
-        RS-->>R: {source:"db", results}
-    else DB timeout — stale-cache fallback
-        RS->>RD: GET cache key
-        RS-->>R: {source:"cache", results} or 503
-    end
+    D[Retrieval Service<br/>Vector Search]
 
-    R->>IW: POST /infer (prompt with retrieved context)
+    E[Inference Worker Pool<br/>Batching / Execution]
 
-    alt Queue has capacity (< 32)
-        Note over IW: Batch collector waits up to 10 ms<br/>Dispatches batch of ≤ 8 · 50 ms simulated latency
-        IW-->>R: {response, served_ms}
-        R-->>C: 200 {outcome:"tier1"}
-    else Queue full → 429, retry without context
-        R->>IW: POST /infer (prompt only, no context)
-        alt Queue has capacity
-            IW-->>R: {response, served_ms}
-            R-->>C: 200 {outcome:"degraded"}
-        else Still full
-            R-->>C: 503 system overloaded
-        end
-    end
+    F[(PostgreSQL + pgvector)]
+
+    G[(Redis Cache)]
+
+    H[(Prometheus Metrics)]
+
+    A --> B
+    B --> C
+    B --> D
+    D --> F
+    D --> G
+    C --> E
+    B --> H
+    D --> H
+    E --> H
 ```
 
-### Ingest pipeline (offline)
+---
 
-```mermaid
-graph LR
-    src["Source documents\n(text files)"]
-    job["jobs/ingest/ingest.py"]
-    embed["hash_embed()\n384-dim · L2-normalised"]
 
-    subgraph pg["PostgreSQL (rag db)"]
-        tdocs["documents\ndoc_id · source · version"]
-        tchunks["chunks\nchunk_id · text · chunk_index"]
-        tembed["embeddings\nvector(384) · model_id"]
-    end
+## Failure & Backpressure Flow
 
-    src --> job
-    job -->|"upsert"| tdocs
-    job -->|"upsert"| tchunks
-    job --> embed
-    embed -->|"upsert vector\nmodel_id = hash-embed-v1"| tembed
-    tchunks -->|"chunk_id FK"| tembed
-```
+The platform protects latency SLOs using admission control and bounded queues.
 
-## Milestones
+<p align="center">
+  <img src="docs/architecture/failure-and-backpressure.png" alt="Failure & Backpressure Flow" height="1300">
+</p>
 
-| | |
-|---|---|
-| ✅ Milestone 0 | Scaffold + metrics |
-| ✅ Milestone 1 | Schema + ingestion + retrieval top-k |
-| ✅ Milestone 2 | Retrieval latency budget + cache fallback |
-| ✅ Milestone 3 | Inference queue + batching |
-| ✅ Milestone 4 | `/ask` end-to-end + degradation ladder |
-| ✅ Milestone 5 | Load test + p95 results |
+---
 
-## How to run
+## Key Platform Mechanisms
+
+The architecture implements several core platform mechanisms:
+
+- deadline-aware admission control
+- bounded request queues
+- retrieval latency budgeting
+- inference batching
+- graceful degradation under overload
+- tenant-aware fairness scheduling
+- system observability through metrics
+
+---
+
+## Load Testing Summary
+
+The platform was load tested using **Locust** to simulate burst traffic scenarios.
+
+Load tests evaluate:
+- queue saturation behavior
+- latency distribution under load
+- admission control effectiveness
+- degradation behavior during overload
+
+Metrics were collected using **Prometheus**.
+
+Example results:
+
+| Scenario | Users | RPS | p95 Latency | Failure Rate |
+| ----------------------- | ----- | --- | ----------- | ------------ |
+| Baseline | X     | X   | X           | X            |
+| Burst    | X     | X   | X           | X            |
+
+---
+
+## Architecture Documentation
+
+A detailed architecture description is available in the repository: `docs/` [AI Inference Platform Architecture](docs/architecture/AI-Inference-Platform-Architecture-Description.md).
+
+This document provides a TOGAF-style architecture description including:
+- architecture principles
+- application architecture
+- data architecture
+- technology architecture
+- deployment model
+- architecture tradeoffs
+
+---
+
+## Architecture Decisions
+
+Key architectural decisions are documented as Architecture Decision Records (ADRs):
+
+- [ADR 001 – Admission Control Strategy](docs/adr/001-admission-control.md)
+- [ADR 002 – Bounded Queues](docs/adr/002-bounded-queues.md)
+- [ADR 003 – Multi-Tenant Fairness Scheduling](docs/adr/003-fairness-scheduling.md)
+- [ADR 004 – Graceful Degradation Strategy](docs/adr/004-degradation-strategy.md)
+
+---
+
+## Quick Start
+
+Run the platform locally:
 
 ```bash
 docker compose up --build
 ```
 
-All six containers start together. On first run Docker builds the three application images and pulls the data-store images; subsequent starts are faster.
+The system starts the router, retrieval service, inference worker, data stores, and metrics stack.
 
-> **Note:** Credentials in `docker-compose.yml` are demo-only and intended for local development. Real deployments should inject secrets via environment variables or a secret manager.
+---
 
-To stop and remove containers (data volumes are preserved):
+## Observability
 
-```bash
-docker compose down
-```
+Each service exposes metrics for system behavior analysis.
 
-## Local dev
+Metrics include:
+- request latency
+- queue depth
+- admission rejection rate
+- degradation events
 
-```bash
-# Rebuild and restart a single service
-docker compose up --build router_api
+Metrics are collected using **Prometheus**.
 
-# Tail logs for one service
-docker compose logs -f router_api
+---
 
-# Reset all data (wipes postgres, redis, prometheus volumes)
-docker compose down -v
-```
 
-## Endpoints
+## Future Work
 
-| Service | URL | Description |
-|---|---|---|
-| router_api | http://localhost:8000/health | Health check |
-| router_api | http://localhost:8000/metrics | Prometheus metrics |
-| router_api | http://localhost:8000/docs | OpenAPI UI |
-| retrieval_service | http://localhost:8001/health | Health check |
-| retrieval_service | http://localhost:8001/metrics | Prometheus metrics |
-| retrieval_service | http://localhost:8001/docs | OpenAPI UI |
-| inference_worker | http://localhost:8002/health | Health check |
-| inference_worker | http://localhost:8002/metrics | Prometheus metrics |
-| inference_worker | http://localhost:8002/docs | OpenAPI UI |
-| Prometheus | http://localhost:9090 | Metrics dashboard |
-| PostgreSQL | localhost:5432 | DB `rag`, user `rag`, pass `rag` |
-| Redis | localhost:6379 | Default database 0 |
+Potential extensions to this lab include:
 
-> Demo credentials are intentionally non-secret and for local use only.
+- hierarchical fairness scheduling
+- deadline-aware admission policies
+- semantic caching layers
+- GPU-backed inference workers
+- multi-region inference routing
+- advanced batching strategies
 
-## Load test (Milestone 5)
-
-Script: `scripts/load_test/run.py` — async httpx, configurable workers/duration/RPS.
-
-```bash
-# Install dependency (one-time)
-python3 -m venv /tmp/lt_venv && /tmp/lt_venv/bin/pip install httpx==0.28.1 -q
-
-# Default run: 20 workers, 30 seconds, unlimited RPS
-/tmp/lt_venv/bin/python3 scripts/load_test/run.py
-
-# Throttled: 50 RPS cap
-/tmp/lt_venv/bin/python3 scripts/load_test/run.py --rps 50
-```
-
-### Baseline results (20 workers, 30 s, default docker-compose config)
-
-| Metric | Value |
-|---|---|
-| Throughput | **134.9 req/s** |
-| p50 latency | 150.8 ms |
-| p90 latency | 205.6 ms |
-| p95 latency | **253.3 ms** |
-| p99 latency | 319.6 ms |
-| max latency | 446.4 ms |
-| 200 OK | 100 % (4 046 / 4 046) |
-| outcome: tier1 | 89.5 % |
-| outcome: degraded | 10.5 % |
-| 503 / errors | 0 |
-
-Degraded responses occur intentionally when the retrieval latency budget expires, allowing the system to preserve end-to-end responsiveness under load.
-
-Under higher load (≥ 200 concurrent users), queue saturation produces visible rejection (429/503) rather than unbounded latency growth, enforcing the declared SLO policy.
