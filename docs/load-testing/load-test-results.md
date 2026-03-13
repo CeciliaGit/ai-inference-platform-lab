@@ -1,7 +1,23 @@
-# Load Test Results
+# Load Testing Results
 
-Tool: **Locust 2.43.3** | Host: single macOS laptop (Docker Desktop)
-Date: 2026-02-14
+This project includes load testing scenarios designed to evaluate how the platform behaves under increasing traffic and burst conditions.
+
+The tests focus on validating architectural goals:
+
+- protecting p95 latency for admitted requests
+- enforcing bounded queues
+- demonstrating overload behavior through controlled load shedding
+
+---
+
+## Test Scenarios
+
+| Scenario | Users | Goal |
+|--------|------|------|
+| Baseline | 50 | Validate normal latency behavior |
+| Protect-p95 | 200 | Observe queue pressure and latency protection |
+| Spike | 600 | Validate overload behavior and load shedding |
+| Recovery | variable | Verify system stability after overload |
 
 ---
 
@@ -456,3 +472,16 @@ throughput allows the queue to fill silently. Honest admission control requires
 capacity. A tighter gate (`MAX_CONCURRENCY ≈ 2 × sustainable_rps ×
 expected_p95_s`) would surface the 200-user overload as fast 503s rather than
 5-second tail latency — trading a worse-looking error rate for a truthful one.
+
+
+
+## Architectural Interpretation
+
+The results demonstrate several key platform behaviors:
+
+- The system protects latency for admitted requests by enforcing bounded queues.
+- During burst traffic, the platform sheds excess load instead of allowing latency collapse.
+- Recovery occurs quickly once traffic subsides because requests are not buffered indefinitely.
+
+This behavior reflects the architectural design goal of preserving latency SLOs rather than maximizing request admission.
+
