@@ -269,28 +269,84 @@ Metrics are collected using **Prometheus**.
 
 This lab models several architectural behaviors of AI inference platforms, but it intentionally simplifies some aspects of production systems.
 
-### Simulated Inference Execution
+### 1. Simulated Inference Execution
 
 The inference worker simulates model latency rather than executing real GPU-backed inference.  
 This allows the platform behavior—admission control, queueing, and scheduling—to be evaluated independently of model performance.
 
-### Single-Region Deployment
+### 2. Single-Region Deployment
 
 The current implementation runs in a single-region environment.  
 Production inference platforms typically operate in active-active multi-region deployments with regional routing and failover.
 
-### Simplified Fairness Scheduling
+### 3. Simplified Fairness Scheduling
 
 The scheduler models fairness behavior conceptually but does not yet implement a full production-grade multi-tenant scheduling algorithm such as hierarchical DRR or WFQ.
 
-### Simplified Cost Model
+### 4. Simplified Cost Model
 
 Request cost is estimated using simplified heuristics rather than real token accounting.  
 Production inference platforms track precise token usage and GPU memory consumption.
 
-### No Persistent Semantic Cache
+### 5. No Persistent Semantic Cache
 
 The retrieval layer includes caching behavior, but a full semantic cache with embedding similarity lookup is not implemented in this version of the lab.
+
+---
+
+## Failure Modes
+
+The platform is designed to fail in controlled and predictable ways under stress conditions.
+
+### 1. Queue Saturation
+
+When inference queues reach their configured capacity, new requests are rejected immediately.
+
+This prevents queue buildup and protects latency for admitted requests.
+
+Client behavior:  
+Requests receive HTTP 429 or 503 responses and should retry with backoff.
+
+
+
+### 2. Retrieval Timeout
+
+If retrieval exceeds its latency budget, the system falls back to degraded behavior.
+
+Fallback options include:
+
+- serving cached responses
+- reducing retrieval context
+- skipping retrieval entirely
+
+This prevents retrieval latency from propagating to inference workers.
+
+
+
+### 3. Inference Worker Overload
+
+If inference workers reject requests due to queue pressure, the router may retry once with reduced context.
+
+If the retry also fails, the request is rejected.
+
+This protects the inference worker pool from cascading overload.
+
+
+
+### 4. Burst Traffic
+
+Under sudden traffic spikes, the admission control layer sheds excess requests.
+
+This ensures that admitted requests maintain acceptable latency rather than being delayed by large queues.
+
+
+
+### 5. Metric System Failure
+
+If observability systems (e.g., Prometheus) fail, request processing continues normally.
+
+Metrics collection is intentionally isolated from the request path so that monitoring outages do not impact service availability.
+
 
 ---
 
