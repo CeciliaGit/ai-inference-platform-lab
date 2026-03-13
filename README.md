@@ -157,6 +157,42 @@ The architecture implements several core platform mechanisms to protect latency 
 
 ---
 
+## Design Tradeoffs
+
+The architecture prioritizes predictable latency and system stability over maximum throughput. Several key design tradeoffs were made to achieve this behavior.
+
+### Latency Protection vs Maximum Throughput
+
+The platform favors early request rejection over buffering excess traffic.
+
+Large queues can temporarily absorb burst traffic but lead to severe tail latency and wasted compute resources when requests exceed client timeouts. By enforcing bounded queues and admission control, the system preserves responsiveness for admitted requests.
+
+### Simplicity vs Optimal Scheduling
+
+The platform models fairness scheduling using Deficit Round Robin (DRR).
+
+More mathematically precise algorithms such as Weighted Fair Queuing (WFQ) provide stronger theoretical fairness guarantees but introduce higher scheduling overhead. DRR offers practical fairness with constant-time scheduling, which is better suited for latency-sensitive gateway systems.
+
+### Local Autonomy vs Global Consistency
+
+In distributed inference systems, enforcing strict global quota checks would introduce additional latency on every request.
+
+Instead, the platform favors local decision-making with bounded inconsistencies. Admission and fairness decisions occur locally at the gateway to keep the request path fast and resilient.
+
+### Graceful Degradation vs Perfect Response Quality
+
+Under heavy load, the system reduces workload cost before rejecting traffic.
+
+Examples include limiting retrieval depth, truncating context, or capping generation length. This approach preserves system availability while accepting temporary reductions in response fidelity.
+
+### Observability Overhead vs Operational Visibility
+
+The platform exposes detailed metrics for queue depth, admission decisions, latency distributions, and degradation behavior.
+
+Although metrics collection introduces small overhead, it enables operators to understand system behavior and detect overload conditions before they escalate into failures.
+
+---
+
 ## Load Testing Summary
 
 The platform was load tested using **Locust** to simulate burst traffic scenarios.
@@ -226,6 +262,35 @@ Metrics include:
 - degradation events
 
 Metrics are collected using **Prometheus**.
+
+---
+
+## System Limits
+
+This lab models several architectural behaviors of AI inference platforms, but it intentionally simplifies some aspects of production systems.
+
+### Simulated Inference Execution
+
+The inference worker simulates model latency rather than executing real GPU-backed inference.  
+This allows the platform behavior—admission control, queueing, and scheduling—to be evaluated independently of model performance.
+
+### Single-Region Deployment
+
+The current implementation runs in a single-region environment.  
+Production inference platforms typically operate in active-active multi-region deployments with regional routing and failover.
+
+### Simplified Fairness Scheduling
+
+The scheduler models fairness behavior conceptually but does not yet implement a full production-grade multi-tenant scheduling algorithm such as hierarchical DRR or WFQ.
+
+### Simplified Cost Model
+
+Request cost is estimated using simplified heuristics rather than real token accounting.  
+Production inference platforms track precise token usage and GPU memory consumption.
+
+### No Persistent Semantic Cache
+
+The retrieval layer includes caching behavior, but a full semantic cache with embedding similarity lookup is not implemented in this version of the lab.
 
 ---
 
