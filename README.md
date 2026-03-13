@@ -1,6 +1,6 @@
 # AI Inference Platform Lab
 
-This repository explores the **platform architecture of AI inference systems**, focusing on admission control, fairness scheduling, and latency protection under burst traffic rather than model development.
+This repository explores the platform architecture required to operate large-scale AI inference systems reliably under burst traffic and multi-tenant workloads, focusing on admission control, fairness scheduling, and latency protection under burst traffic rather than model development.
 
 The project models the control-plane mechanisms required to operate a multi-tenant inference platform reliably under unpredictable workloads.
 
@@ -40,6 +40,19 @@ The platform is designed to achieve the following objectives:
 
 ---
 
+System Properties
+
+The platform is designed around the following operational properties:
+
+| Property                      | Description                                                                 |
+|------------------------------|-----------------------------------------------------------------------------|
+| Latency Protection           | Admission control and bounded queues prevent latency collapse during bursts |
+| Fairness                     | Tenant-aware scheduling ensures one tenant cannot starve others            |
+| Predictable Overload Behavior| The system sheds excess traffic instead of buffering requests indefinitely |
+| Graceful Degradation         | Retrieval budgets and generation limits can be reduced under load          |
+| Observability                | Metrics expose queue depth, rejection rate, and latency distributions      |
+
+---
 ### SLO Target
 
 The system models a platform designed to protect latency targets such as:
