@@ -3,7 +3,6 @@
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![Docker](https://img.shields.io/badge/docker-compose-blue)
 
-## Purpose
 
 This repository demonstrates a distributed AI inference platform designed to explore how modern LLM systems protect latency SLOs under burst traffic. It focuses on platform-level concerns such as This repository explores the platform architecture required to operate large-scale AI inference systems reliably under burst traffic and multi-tenant workloads. The focus is on platform reliability mechanisms such as admission control, fairness scheduling, bounded queues, and latency protection rather than model development.
 
@@ -146,6 +145,7 @@ The platform protects latency SLOs using admission control and bounded queues.
 </p>
 
 ---
+## Key Platform Mechanisms
 
 The architecture implements several core platform mechanisms to protect latency and ensure predictable system behavior under burst traffic:
 
@@ -210,14 +210,6 @@ Although metrics collection introduces small overhead, it enables operators to u
 
 ---
 
-## Architecture at a glance
-
-
-## Architecture Diagram
-The architecture prioritizes **latency protection over maximum throughput**.
-
----
-
 ## End-to-End Request Flow
 
 1. Client sends query to **Router API**
@@ -242,23 +234,74 @@ The architecture prioritizes **latency protection over maximum throughput**.
 
 ---
 
-### Request flow — `/ask` and the degradation ladder
-## What This Repository Demonstrates
+### Request flow diagram — `/ask` and the degradation ladder
 
-This lab models several architectural mechanisms used in large-scale inference systems:
-- distributed inference routing
-- retrieval-augmented generation pipeline
-- admission control at the platform boundary
-- bounded queues and backpressure
-- fairness scheduling across tenants
-- graceful degradation under overload
-- observability of platform behavior
+```mermaid
+sequenceDiagram
+    participant C  as Client
+    participant R  as router_api
+    participant RS as retrieval_service
+    participant IW as inference_worker
+    participant PG as PostgreSQL
+    participant RD as Redis
 
-The goal is to explore **platform reliability and behavior**, not model optimization.
+    C->>R: POST /ask {query, tenant, top_k}
+    Note over R: Gate: _in_flight < MAX_CONCURRENCY (64)<br/>→ 503 if full
 
----
+    R->>RS: POST /retrieve
+    RS->>RD: GET cache key
 
-## Architecture Overview
+    alt Cache hit
+        RD-->>RS: cached chunks (JSON)
+        RS-->>R: {source:"cache", results}
+    else Cache miss — query DB within 40 ms budget
+        RS->>PG: SELECT … ORDER BY embedding <=> $1 LIMIT $2
+        PG-->>RS: top-k chunks
+        RS->>RD: SET cache (TTL = 300 s)
+        RS-->>R: {source:"db", results}
+    else DB timeout — stale-cache fallback
+        RS->>RD: GET cache key
+        RS-->>R: {source:"cache", results} or 503
+    end
+
+    R->>IW: POST /infer (prompt with retrieved context)
+
+    alt Queue has capacity (< 32)
+        Note over IW: Batch collector waits up to 10 ms<br/>Dispatches batch of ≤ 8 · 50 ms simulated latency
+        IW-->>R: {response, served_ms}
+        R-->>C: 200 {outcome:"tier1"}
+    else Queue full → 429, retry without context
+        R->>IW: POST /infer (prompt only, no context)
+        alt Queue has capacity
+            IW-->>R: {response, served_ms}
+            R-->>C: 200 {outcome:"degraded"}
+        else Still full
+            R-->>C: 503 system overloaded
+        end
+    end
+```
+
+### Ingest pipeline (offline)
+
+```mermaid
+graph LR
+    src["Source documents\n(text files)"]
+    job["jobs/ingest/ingest.py"]
+    embed["hash_embed()\n384-dim · L2-normalised"]
+
+    subgraph pg["PostgreSQL (rag db)"]
+        tdocs["documents\ndoc_id · source · version"]
+        tchunks["chunks\nchunk_id · text · chunk_index"]
+        tembed["embeddings\nvector(384) · model_id"]
+    end
+
+    src --> job
+    job -->|"upsert"| tdocs
+    job -->|"upsert"| tchunks
+    job --> embed
+    embed -->|"upsert vector\nmodel_id = hash-embed-v1"| tembed
+    tchunks -->|"chunk_id FK"| tembed
+```
 
 ## Degradation Strategy
 
@@ -454,120 +497,7 @@ The architecture separates control-plane responsibilities (routing, scheduling, 
 
 Requests enter through a routing layer that enforces admission control and fairness policies before interacting with retrieval and inference services.
 
-
----
-
-## Architecture Diagram
-
-```mermaid
-flowchart TD
-    A[Client / Tenant]
-
-    B[Router API<br/>Admission Control<br/>Rate Limits]
-
-    C[Fairness Scheduler<br/>Tenant Queues]
-
-    D[Retrieval Service<br/>Vector Search]
-
-    E[Inference Worker Pool<br/>Batching / Execution]
-
-    F[(PostgreSQL + pgvector)]
-
-    G[(Redis Cache)]
-
-    H[(Prometheus Metrics)]
-
-    A --> B
-    B --> C
-    B --> D
-    D --> F
-    D --> G
-    C --> E
-    B --> H
-    D --> H
-    E --> H
-```
-
 > **Note:** `hash_embed()` is duplicated verbatim in `jobs/ingest/ingest.py` and `services/retrieval_service/app/main.py`; both files must be updated together if the embedding function changes.
-
----
-
-# Observability
----
-
-
-## Failure & Backpressure Flow
-
-The platform protects latency SLOs using admission control and bounded queues.
-
-<p align="center">
-  <img src="docs/architecture/failure-and-backpressure.png" alt="Failure & Backpressure Flow" height="1300">
-</p>
-
----
-
-## Key Platform Mechanisms
-
-The architecture implements several core platform mechanisms to protect latency and ensure predictable system behavior under burst traffic:
-
-- **Admission control** – deadline-aware request admission to protect latency SLOs  
-- **Fairness scheduling** – tenant-aware request queues to prevent noisy-neighbor effects  
-- **Bounded queues** – controlled queue sizes to avoid latency collapse under overload  
-- **Retrieval latency budgeting** – limiting retrieval work to preserve inference deadlines  
-- **Inference batching** – grouping requests to improve worker throughput  
-- **Graceful degradation** – reducing workload cost when capacity is constrained  
-- **Observability** – system metrics exposing queue depth, latency, and rejection rates
-
----
-
-## Platform Controls
-
-The platform exposes several tunable controls that influence system behavior under load.
-
-| Control | Description |
-|------|------|
-| MAX_QUEUE_SIZE | Maximum requests waiting for inference |
-| MAX_BATCH_SIZE | Maximum batch size for inference workers |
-| BATCH_TIMEOUT_MS | Maximum batching delay before execution |
-| RETRIEVAL_BUDGET_MS | Maximum time allowed for retrieval operations |
-| ADMISSION_SAFETY_MARGIN | Buffer applied to latency SLO when admitting requests |
-| CACHE_TTL_S | Lifetime of cached retrieval results |
-
----
-
-## Design Tradeoffs
-
-The architecture prioritizes predictable latency and system stability over maximum throughput. Several key design tradeoffs were made to achieve this behavior.
-
-### Latency Protection vs Maximum Throughput
-
-The platform favors early request rejection over buffering excess traffic.
-
-Large queues can temporarily absorb burst traffic but lead to severe tail latency and wasted compute resources when requests exceed client timeouts. By enforcing bounded queues and admission control, the system preserves responsiveness for admitted requests.
-
-### Simplicity vs Optimal Scheduling
-
-The platform models fairness scheduling using Deficit Round Robin (DRR).
-
-More mathematically precise algorithms such as Weighted Fair Queuing (WFQ) provide stronger theoretical fairness guarantees but introduce higher scheduling overhead. DRR offers practical fairness with constant-time scheduling, which is better suited for latency-sensitive gateway systems.
-
-### Local Autonomy vs Global Consistency
-
-In distributed inference systems, enforcing strict global quota checks would introduce additional latency on every request.
-
-Instead, the platform favors local decision-making with bounded inconsistencies. Admission and fairness decisions occur locally at the gateway to keep the request path fast and resilient.
-
-### Graceful Degradation vs Perfect Response Quality
-
-Under heavy load, the system reduces workload cost before rejecting traffic.
-
-Examples include limiting retrieval depth, truncating context, or capping generation length. This approach preserves system availability while accepting temporary reductions in response fidelity.
-
-### Observability Overhead vs Operational Visibility
-
-The platform exposes detailed metrics for queue depth, admission decisions, latency distributions, and degradation behavior.
-
-Although metrics collection introduces small overhead, it enables operators to understand system behavior and detect overload conditions before they escalate into failures.
 
 ---
 
@@ -748,11 +678,10 @@ Potential extensions to this lab include:
 - deadline-aware admission control based on queue wait prediction
 
 ---
-## Extended Architecture Documentation
+## System Limits
 
-A TOGAF-style architecture view of the platform is available in `docs/` [TOGAF-Style Architecture Definition](docs/ai_inference_platform_lab_TOGAF_architecture.md).
+This lab models several architectural behaviors of AI inference platforms, but it intentionally simplifies some aspects of production systems.
 
----
 ### 1. Simulated Inference Execution
 
 The inference worker simulates model latency rather than executing real GPU-backed inference.  
