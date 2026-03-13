@@ -1,6 +1,6 @@
 # AI Inference Platform Lab
 
-This repository explores the **platform architecture of AI inference systems**, focusing on admission control, fairness scheduling, and latency protection under burst traffic rather than model development.
+This repository explores the platform architecture required to operate large-scale AI inference systems reliably under burst traffic and multi-tenant workloads. The focus is on platform reliability mechanisms such as admission control, fairness scheduling, bounded queues, and latency protection rather than model development.
 
 The project models the control-plane mechanisms required to operate a multi-tenant inference platform reliably under unpredictable workloads.
 
@@ -40,6 +40,20 @@ The platform is designed to achieve the following objectives:
 
 ---
 
+## System Properties
+
+The platform is designed around the following operational properties:
+
+
+| Property                      | Description                                                                 |
+|------------------------------|-----------------------------------------------------------------------------|
+| Latency Protection           | Admission control and bounded queues prevent latency collapse during bursts |
+| Fairness                     | Tenant-aware scheduling ensures one tenant cannot starve others            |
+| Predictable Overload Behavior| The system sheds excess traffic instead of buffering requests indefinitely |
+| Graceful Degradation         | Retrieval budgets and generation limits can be reduced under load          |
+| Observability                | Metrics expose queue depth, rejection rate, and latency distributions      |
+
+---
 ### SLO Target
 
 The system models a platform designed to protect latency targets such as:
@@ -131,15 +145,51 @@ The platform protects latency SLOs using admission control and bounded queues.
 
 ## Key Platform Mechanisms
 
-The architecture implements several core platform mechanisms:
+The architecture implements several core platform mechanisms to protect latency and ensure predictable system behavior under burst traffic:
 
-- deadline-aware admission control
-- bounded request queues
-- retrieval latency budgeting
-- inference batching
-- graceful degradation under overload
-- tenant-aware fairness scheduling
-- system observability through metrics
+- **Admission control** – deadline-aware request admission to protect latency SLOs  
+- **Fairness scheduling** – tenant-aware request queues to prevent noisy-neighbor effects  
+- **Bounded queues** – controlled queue sizes to avoid latency collapse under overload  
+- **Retrieval latency budgeting** – limiting retrieval work to preserve inference deadlines  
+- **Inference batching** – grouping requests to improve worker throughput  
+- **Graceful degradation** – reducing workload cost when capacity is constrained  
+- **Observability** – system metrics exposing queue depth, latency, and rejection rates
+
+---
+
+## Design Tradeoffs
+
+The architecture prioritizes predictable latency and system stability over maximum throughput. Several key design tradeoffs were made to achieve this behavior.
+
+### Latency Protection vs Maximum Throughput
+
+The platform favors early request rejection over buffering excess traffic.
+
+Large queues can temporarily absorb burst traffic but lead to severe tail latency and wasted compute resources when requests exceed client timeouts. By enforcing bounded queues and admission control, the system preserves responsiveness for admitted requests.
+
+### Simplicity vs Optimal Scheduling
+
+The platform models fairness scheduling using Deficit Round Robin (DRR).
+
+More mathematically precise algorithms such as Weighted Fair Queuing (WFQ) provide stronger theoretical fairness guarantees but introduce higher scheduling overhead. DRR offers practical fairness with constant-time scheduling, which is better suited for latency-sensitive gateway systems.
+
+### Local Autonomy vs Global Consistency
+
+In distributed inference systems, enforcing strict global quota checks would introduce additional latency on every request.
+
+Instead, the platform favors local decision-making with bounded inconsistencies. Admission and fairness decisions occur locally at the gateway to keep the request path fast and resilient.
+
+### Graceful Degradation vs Perfect Response Quality
+
+Under heavy load, the system reduces workload cost before rejecting traffic.
+
+Examples include limiting retrieval depth, truncating context, or capping generation length. This approach preserves system availability while accepting temporary reductions in response fidelity.
+
+### Observability Overhead vs Operational Visibility
+
+The platform exposes detailed metrics for queue depth, admission decisions, latency distributions, and degradation behavior.
+
+Although metrics collection introduces small overhead, it enables operators to understand system behavior and detect overload conditions before they escalate into failures.
 
 ---
 
@@ -166,7 +216,7 @@ Example results:
 
 ## Architecture Documentation
 
-A detailed architecture description is available in the repository: `docs/` [AI Inference Platform Architecture](docs/architecture/AI-Inference-Platform-Architecture-Description.md).
+A detailed architecture description is available in the repository: `docs/architecture/` [AI Inference Platform Architecture](docs/architecture/AI-Inference-Platform-Architecture-Description.md).
 
 This document provides a TOGAF-style architecture description including:
 - architecture principles
@@ -212,6 +262,91 @@ Metrics include:
 - degradation events
 
 Metrics are collected using **Prometheus**.
+
+---
+
+## System Limits
+
+This lab models several architectural behaviors of AI inference platforms, but it intentionally simplifies some aspects of production systems.
+
+### 1. Simulated Inference Execution
+
+The inference worker simulates model latency rather than executing real GPU-backed inference.  
+This allows the platform behavior—admission control, queueing, and scheduling—to be evaluated independently of model performance.
+
+### 2. Single-Region Deployment
+
+The current implementation runs in a single-region environment.  
+Production inference platforms typically operate in active-active multi-region deployments with regional routing and failover.
+
+### 3. Simplified Fairness Scheduling
+
+The scheduler models fairness behavior conceptually but does not yet implement a full production-grade multi-tenant scheduling algorithm such as hierarchical DRR or WFQ.
+
+### 4. Simplified Cost Model
+
+Request cost is estimated using simplified heuristics rather than real token accounting.  
+Production inference platforms track precise token usage and GPU memory consumption.
+
+### 5. No Persistent Semantic Cache
+
+The retrieval layer includes caching behavior, but a full semantic cache with embedding similarity lookup is not implemented in this version of the lab.
+
+---
+
+## Failure Modes
+
+The platform is designed to fail in controlled and predictable ways under stress conditions.
+
+### 1. Queue Saturation
+
+When inference queues reach their configured capacity, new requests are rejected immediately.
+
+This prevents queue buildup and protects latency for admitted requests.
+
+Client behavior:  
+Requests receive HTTP 429 or 503 responses and should retry with backoff.
+
+
+
+### 2. Retrieval Timeout
+
+If retrieval exceeds its latency budget, the system falls back to degraded behavior.
+
+Fallback options include:
+
+- serving cached responses
+- reducing retrieval context
+- skipping retrieval entirely
+
+This prevents retrieval latency from propagating to inference workers.
+
+
+
+### 3. Inference Worker Overload
+
+If inference workers reject requests due to queue pressure, the router may retry once with reduced context.
+
+If the retry also fails, the request is rejected.
+
+This protects the inference worker pool from cascading overload.
+
+
+
+### 4. Burst Traffic
+
+Under sudden traffic spikes, the admission control layer sheds excess requests.
+
+This ensures that admitted requests maintain acceptable latency rather than being delayed by large queues.
+
+
+
+### 5. Metric System Failure
+
+If observability systems (e.g., Prometheus) fail, request processing continues normally.
+
+Metrics collection is intentionally isolated from the request path so that monitoring outages do not impact service availability.
+
 
 ---
 

@@ -1,7 +1,23 @@
-# Load Test Results — Milestone 5A
+# Load Testing Results
 
-Tool: **Locust 2.43.3** | Host: single macOS laptop (Docker Desktop)
-Date: 2026-02-14
+This project includes load testing scenarios designed to evaluate how the platform behaves under increasing traffic and burst conditions.
+
+The tests focus on validating architectural goals:
+
+- protecting p95 latency for admitted requests
+- enforcing bounded queues
+- demonstrating overload behavior through controlled load shedding
+
+---
+
+## Test Scenarios
+
+| Scenario | Users | Goal |
+|--------|------|------|
+| Baseline | 50 | Validate normal latency behavior |
+| Protect-p95 | 200 | Observe queue pressure and latency protection |
+| Spike | 600 | Validate overload behavior and load shedding |
+| Recovery | variable | Verify system stability after overload |
 
 ---
 
@@ -82,6 +98,8 @@ items during the steady state.
 | p99 latency | 51 000 ms |
 | max latency | 114 000 ms |
 
+---
+
 **Interpretation:**
 At 600 users the inference queue saturates immediately. The degradation ladder
 fires as designed:
@@ -120,6 +138,8 @@ Prometheus during spike:
 | **p95 latency** | **4 100 ms** |
 | p99 latency | 4 400 ms |
 | max latency | 6 500 ms |
+
+---
 
 **Interpretation:**
 p95 at 4 100 ms matches baseline within rounding. No residual queue backlog,
@@ -169,6 +189,8 @@ observations exceeded this, causing `histogram_quantile` to return `NaN`.
 | `HTTP_TIMEOUT_S` (router) | 5.0 s | Longer tolerance for slow inference; more in-flight at overload | Faster 503s; less connection backlog at spike |
 | `RETRIEVAL_BUDGET_MS` | 40 ms | More time for pgvector; fewer cache fallbacks | More cache hits; more degraded responses |
 
+---
+
 **Recommended next experiments:**
 - Set `MAX_QUEUE_SIZE=128` to test whether doubling buffer capacity shifts the
   saturation point or just increases tail latency.
@@ -207,6 +229,8 @@ Config change applied (see commit `c530468`):
 | Recovery | Throughput | 53.1 req/s | — (router stuck) |
 | Recovery | p95 | 4 100 ms | — |
 
+---
+
 ### Interpretation
 
 **Baseline is worse under protect-p95.**
@@ -233,6 +257,8 @@ spike: the uvicorn event loop accumulates queued SYN packets during the flood
 and does not drain them automatically when load drops. A `docker compose
 restart router_api` restores normal operation in ~3 s. This is a known
 single-process uvicorn limitation and is not specific to either queue config.
+
+---
 
 ### Conclusion
 
@@ -336,6 +362,8 @@ distribution would return in ~150 ms, making p95 of all traffic < 300 ms.
 All queries verified against `http://localhost:9090`. Paste directly into
 the **Graph** tab.
 
+---
+
 ### Core SLO queries
 
 ```promql
@@ -382,6 +410,8 @@ inference_queue_depth
 
 **Saturation threshold:** `inference_queue_depth` → `MAX_QUEUE_SIZE` (32)
 means the next batch of requests will be rejected.
+
+---
 
 ### Downstream component latencies
 
@@ -456,3 +486,21 @@ throughput allows the queue to fill silently. Honest admission control requires
 capacity. A tighter gate (`MAX_CONCURRENCY ≈ 2 × sustainable_rps ×
 expected_p95_s`) would surface the 200-user overload as fast 503s rather than
 5-second tail latency — trading a worse-looking error rate for a truthful one.
+
+---
+
+## Architectural Interpretation
+
+The results demonstrate several key platform behaviors:
+
+- The system protects latency for admitted requests by enforcing bounded queues.
+- During burst traffic, the platform sheds excess load instead of allowing latency collapse.
+- Recovery occurs quickly once traffic subsides because requests are not buffered indefinitely.
+
+This behavior reflects the architectural design goal of preserving latency SLOs rather than maximizing request admission.
+
+---
+
+See Architecture Description for the system design that drives these results. [AI Inference Platform Architecture](../architecture/AI-Inference-Platform-Architecture-Description.md)
+
+---

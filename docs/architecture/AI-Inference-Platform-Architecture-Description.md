@@ -79,24 +79,31 @@ LLM/AI inference systems often fail in the worst possible way under burst traffi
 
 ```mermaid
 flowchart TD
+    A[Client / Tenant]
 
-A[Client / Tenant]
+    B[Router API<br/>Admission Control<br/>Rate Limits]
 
-B[Router API<br>Admission Control<br>Fair Scheduling]
+    C[Fairness Scheduler<br/>Tenant Queues]
 
-C[Retrieval Service<br>Vector Search]
+    D[Retrieval Service<br/>Vector Search]
 
-D[Inference Worker<br>Batching / Queue]
+    E[Inference Worker Pool<br/>Batching / Execution]
 
-E[PostgreSQL + pgvector]
+    F[(PostgreSQL + pgvector)]
 
-F[Prometheus Metrics]
+    G[(Redis Cache)]
 
-A --> B
-B --> C
-C --> D
-C --> E
-D --> F
+    H[(Prometheus Metrics)]
+
+    A --> B
+    B --> C
+    B --> D
+    D --> F
+    D --> G
+    C --> E
+    B --> H
+    D --> H
+    E --> H
 ```
 
 
@@ -123,7 +130,7 @@ E -->|No| G[Use Cache / Reduced Context]
 F --> H[Inference Worker Queue]
 G --> H
 
-H --> I{Queue Capacity Avaliable?}
+H --> I{Queue Capacity Available?}
 I -->|Yes| J[Batch + Execute]
 I -->|No| K[Brownout / Degradation]
 
@@ -270,6 +277,12 @@ Observability enables evaluation of queue depth, latency distribution, degradati
 
 ## 11. Architecture Tradeoffs
 
+- latency protection over throughput
+- bounded queues over unbounded buffering
+- local cache fallback over strict retrieval consistency
+- simpler batching behavior over maximum theoretical efficiency
+
+---
 
 ## 12. Key Architecture Decisions
 
