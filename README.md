@@ -97,6 +97,7 @@ The architecture separates control-plane responsibilities (routing, scheduling, 
 
 Requests enter through a routing layer that enforces admission control and fairness policies before interacting with retrieval and inference services.
 
+
 ---
 
 ## Architecture Diagram
@@ -154,6 +155,21 @@ The architecture implements several core platform mechanisms to protect latency 
 - **Inference batching** – grouping requests to improve worker throughput  
 - **Graceful degradation** – reducing workload cost when capacity is constrained  
 - **Observability** – system metrics exposing queue depth, latency, and rejection rates
+
+---
+
+## Platform Controls
+
+The platform exposes several tunable controls that influence system behavior under load.
+
+| Control | Description |
+|------|------|
+| MAX_QUEUE_SIZE | Maximum requests waiting for inference |
+| MAX_BATCH_SIZE | Maximum batch size for inference workers |
+| BATCH_TIMEOUT_MS | Maximum batching delay before execution |
+| RETRIEVAL_BUDGET_MS | Maximum time allowed for retrieval operations |
+| ADMISSION_SAFETY_MARGIN | Buffer applied to latency SLO when admitting requests |
+| CACHE_TTL_S | Lifetime of cached retrieval results |
 
 ---
 
@@ -249,6 +265,9 @@ docker compose up --build
 
 The system starts the router, retrieval service, inference worker, data stores, and metrics stack.
 
+Configuration defaults are documented in `.env.example`. 
+Copy this file to `.env` to override runtime settings locally.
+
 ---
 
 ## Observability
@@ -262,6 +281,8 @@ Metrics include:
 - degradation events
 
 Metrics are collected using **Prometheus**.
+
+Services expose both liveness (`/health`) and readiness (`/health/ready`) endpoints, and Docker Compose health checks enforce dependency-aware startup ordering across the stack.
 
 ---
 
