@@ -14,8 +14,17 @@ services:
       - HTTP_TIMEOUT_S=2.0
       - MAX_CONCURRENCY=64
     depends_on:
-      - retrieval_service
-      - inference_worker
+      retrieval_service:
+        condition: service_healthy
+      inference_worker:
+        condition: service_healthy
+    # Ensure the service is fully initialized and dependencies are reachable
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
   retrieval_service:
@@ -28,8 +37,17 @@ services:
       - RETRIEVAL_BUDGET_MS=40
       - CACHE_TTL_S=300
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Ensure the service is fully initialized and dependencies are reachable
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
   inference_worker:
@@ -43,7 +61,15 @@ services:
       - BATCH_TIMEOUT_MS=10
       - INFERENCE_LATENCY_MS=50
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    # Ensure the service is fully initialized and dependencies are reachable
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
@@ -62,6 +88,13 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres:/docker-entrypoint-initdb.d:ro
+    # Wait until Postgres accepts connections before dependent services start
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
   redis:
@@ -70,6 +103,12 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    # Wait until Redis is responsive before dependent services start
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------

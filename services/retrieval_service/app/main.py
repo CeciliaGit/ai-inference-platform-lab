@@ -3,26 +3,26 @@ import hashlib
 import json
 import logging
 import math
-import os
 import re
 import time
 from contextlib import asynccontextmanager
 from typing import Literal
 
 import asyncpg
+from app.config import (
+    CACHE_TTL_S,
+    LOG_LEVEL,
+    POSTGRES_URL,
+    REDIS_URL,
+    RETRIEVAL_BUDGET_MS,
+)
 from fastapi import FastAPI, HTTPException
 from prometheus_client import Counter, Histogram, make_asgi_app
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 
+logging.basicConfig(level=getattr(logging, LOG_LEVEL.upper(), logging.INFO))
 logger = logging.getLogger(__name__)
-
-POSTGRES_URL = os.environ.get("POSTGRES_URL")
-if not POSTGRES_URL:
-    raise RuntimeError("POSTGRES_URL must be set (demo: postgresql://rag:rag@postgres:5432/rag)")
-REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
-RETRIEVAL_BUDGET_MS = int(os.environ.get("RETRIEVAL_BUDGET_MS", "40"))
-CACHE_TTL_S = int(os.environ.get("CACHE_TTL_S", "300"))
 EMBED_DIM = 384
 EMBED_MODEL_ID = "hash-embed-v1"
 
@@ -107,9 +107,34 @@ metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
 
 
+from fastapi import HTTPException
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/health/ready")
+async def ready():
+    if _pool is None:
+        raise HTTPException(status_code=503, detail="DB pool not ready")
+    if _redis is None:
+        raise HTTPException(status_code=503, detail="Redis not ready")
+
+    try:
+        async with _pool.acquire() as conn:
+            await asyncio.wait_for(conn.fetchval("SELECT 1"), timeout=2.0)
+
+        await asyncio.wait_for(_redis.ping(), timeout=2.0)
+
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Dependency check timeout")
+
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Dependency check failed: {exc}")
+
+    return {"status": "ready"}
 
 
 # ---------------------------------------------------------------------------
@@ -196,9 +221,13 @@ async def retrieve(req: RetrieveRequest):
 
     try:
         start = time.perf_counter()
-        results = await asyncio.wait_for(_query_db(vector_literal, req.top_k), timeout=budget_s)
+        results = await asyncio.wait_for(
+            _query_db(vector_literal, req.top_k), timeout=budget_s
+        )
         RETRIEVAL_DB_LATENCY_MS.observe((time.perf_counter() - start) * 1000)
-        await _redis.set(key, json.dumps([r.model_dump() for r in results]), ex=req.cache_ttl_s)
+        await _redis.set(
+            key, json.dumps([r.model_dump() for r in results]), ex=req.cache_ttl_s
+        )
         CACHE_WRITE.inc()
         RETRIEVAL_REQUESTS.labels(outcome="db").inc()
         return RetrieveResponse(source="db", results=results)
