@@ -97,6 +97,7 @@ The architecture separates control-plane responsibilities (routing, scheduling, 
 
 Requests enter through a routing layer that enforces admission control and fairness policies before interacting with retrieval and inference services.
 
+
 ---
 
 ## Architecture Diagram
@@ -280,6 +281,8 @@ Metrics include:
 - degradation events
 
 Metrics are collected using **Prometheus**.
+
+Services expose both liveness (`/health`) and readiness (`/health/ready`) endpoints, and Docker Compose health checks enforce dependency-aware startup ordering across the stack.
 
 ---
 

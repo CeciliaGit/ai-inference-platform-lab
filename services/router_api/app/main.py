@@ -83,6 +83,13 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/health/ready")
+def health_ready():
+    if _http is None:
+        raise HTTPException(status_code=503, detail="HTTP client not initialized")
+    return {"status": "ready"}
+
+
 # ---------------------------------------------------------------------------
 # POST /ask
 # ---------------------------------------------------------------------------
