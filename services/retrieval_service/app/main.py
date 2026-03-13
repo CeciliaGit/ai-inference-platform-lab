@@ -3,7 +3,6 @@ import hashlib
 import json
 import logging
 import math
-import os
 import re
 import time
 from contextlib import asynccontextmanager
@@ -15,14 +14,10 @@ from prometheus_client import Counter, Histogram, make_asgi_app
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 
-logger = logging.getLogger(__name__)
+from app.config import CACHE_TTL_S, LOG_LEVEL, POSTGRES_URL, REDIS_URL, RETRIEVAL_BUDGET_MS
 
-POSTGRES_URL = os.environ.get("POSTGRES_URL")
-if not POSTGRES_URL:
-    raise RuntimeError("POSTGRES_URL must be set (demo: postgresql://rag:rag@postgres:5432/rag)")
-REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
-RETRIEVAL_BUDGET_MS = int(os.environ.get("RETRIEVAL_BUDGET_MS", "40"))
-CACHE_TTL_S = int(os.environ.get("CACHE_TTL_S", "300"))
+logging.basicConfig(level=getattr(logging, LOG_LEVEL.upper(), logging.INFO))
+logger = logging.getLogger(__name__)
 EMBED_DIM = 384
 EMBED_MODEL_ID = "hash-embed-v1"
 

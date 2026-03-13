@@ -1,5 +1,5 @@
 import asyncio
-import os
+import logging
 import time
 from contextlib import asynccontextmanager
 from typing import Literal
@@ -8,10 +8,10 @@ from fastapi import FastAPI, HTTPException
 from prometheus_client import Counter, Gauge, Histogram, make_asgi_app
 from pydantic import BaseModel, Field
 
-MAX_QUEUE_SIZE = int(os.environ.get("MAX_QUEUE_SIZE", "64"))
-MAX_BATCH_SIZE = int(os.environ.get("MAX_BATCH_SIZE", "8"))
-BATCH_TIMEOUT_MS = int(os.environ.get("BATCH_TIMEOUT_MS", "20"))
-INFERENCE_LATENCY_MS = int(os.environ.get("INFERENCE_LATENCY_MS", "50"))
+from app.config import BATCH_TIMEOUT_MS, INFERENCE_LATENCY_MS, LOG_LEVEL, MAX_BATCH_SIZE, MAX_QUEUE_SIZE
+
+logging.basicConfig(level=getattr(logging, LOG_LEVEL.upper(), logging.INFO))
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------

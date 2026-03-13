@@ -157,6 +157,21 @@ The architecture implements several core platform mechanisms to protect latency 
 
 ---
 
+## Platform Controls
+
+The platform exposes several tunable controls that influence system behavior under load.
+
+| Control | Description |
+|------|------|
+| MAX_QUEUE_SIZE | Maximum requests waiting for inference |
+| MAX_BATCH_SIZE | Maximum batch size for inference workers |
+| BATCH_TIMEOUT_MS | Maximum batching delay before execution |
+| RETRIEVAL_BUDGET_MS | Maximum time allowed for retrieval operations |
+| ADMISSION_SAFETY_MARGIN | Buffer applied to latency SLO when admitting requests |
+| CACHE_TTL_S | Lifetime of cached retrieval results |
+
+---
+
 ## Design Tradeoffs
 
 The architecture prioritizes predictable latency and system stability over maximum throughput. Several key design tradeoffs were made to achieve this behavior.
@@ -248,6 +263,9 @@ docker compose up --build
 ```
 
 The system starts the router, retrieval service, inference worker, data stores, and metrics stack.
+
+Configuration defaults are documented in `.env.example`. 
+Copy this file to `.env` to override runtime settings locally.
 
 ---
 
