@@ -40,9 +40,10 @@ The platform is designed to achieve the following objectives:
 
 ---
 
-System Properties
+## System Properties
 
 The platform is designed around the following operational properties:
+
 
 | Property                      | Description                                                                 |
 |------------------------------|-----------------------------------------------------------------------------|
