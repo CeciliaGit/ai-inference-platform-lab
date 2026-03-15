@@ -1,5 +1,6 @@
 # AI Inference Platform Lab
 
+
 This repository explores the platform architecture required to operate large-scale AI inference systems reliably under burst traffic and multi-tenant workloads. The focus is on platform reliability mechanisms such as admission control, fairness scheduling, bounded queues, and latency protection rather than model development.
 
 The project models the control-plane mechanisms required to operate a multi-tenant inference platform reliably under unpredictable workloads.
@@ -382,4 +383,12 @@ Potential extensions to this lab include:
 - GPU-backed inference workers
 - multi-region inference routing
 - advanced batching strategies
+
+
+---
+
+Related Architecture Notes
+
+distributed-systems-notes
+
 
